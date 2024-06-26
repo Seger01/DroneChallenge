@@ -2,11 +2,94 @@
 This example shows how to take simple range measurements with the VL53L1X. The
 range readings are in units of mm.
 */
+// Define the states using an enum
+typedef enum {
+    LANDED,
+    FLYING
+} DroneState;
+
 
 #include <Wire.h>
 #include <VL53L1X.h>
 
 VL53L1X sensor;
+
+DroneState previousState = LANDED;
+DroneState currentState = LANDED;
+
+long sensorValue = 0;
+long distanceToGroundFromBottomOfDrone = 0;
+
+void updateState(DroneState newState){
+  previousState = currentState;
+  currentState = newState;
+}
+
+void updateSensorValue(){
+  sensorValue = sensor.read();
+
+  distanceToGroundFromBottomOfDrone = sensorValue - 200;
+
+  if(distanceToGroundFromBottomOfDrone < 0){
+    distanceToGroundFromBottomOfDrone = 0;
+  }
+}
+
+
+
+// Function prototypes
+void handleLandedState();
+void handleFlyingState();
+
+// State machine function
+void droneStateMachine(DroneState *state);
+
+void handleFlyingState() {
+  if (distanceToGroundFromBottomOfDrone < 10){
+    updateState(LANDED);
+  } else {
+    if (distanceToGroundFromBottomOfDrone < 1000){
+      int delayTime = (distanceToGroundFromBottomOfDrone / 3);
+  
+      tone(7,400);
+      delay(50);
+      noTone(7);
+      delay(delayTime);
+  
+      updateState(FLYING);
+    }
+  }
+}
+
+void handleLandedState() {
+  if(previousState == FLYING){
+    tone(7,400);
+    delay(1000);
+    noTone(7);
+    updateState(LANDED);
+  } else {
+    if (distanceToGroundFromBottomOfDrone > 50){
+      updateState(FLYING);
+    } else {
+      updateState(LANDED);
+    }
+  }
+}
+
+
+void droneStateMachine() {
+    switch (currentState) {
+        case LANDED:
+            handleLandedState();
+            break;
+        case FLYING:
+            handleFlyingState();
+            break;
+        default:
+            printf("Invalid state!\n");
+            break;
+    }
+}
 
 void setup()
 {
@@ -35,34 +118,24 @@ void setup()
   // timing budget.
   sensor.startContinuous(50);
   pinMode(7, OUTPUT);
+
+  digitalWrite(7, LOW);
 }
 
 void loop()
 {
-  // Serial.print(sensor.read());
-  // if (sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
-
-  // Serial.println();
-
-  int sensorValue = sensor.read() - 200;
+  updateSensorValue();
+  Serial.println("start");
   Serial.println(sensorValue);
-  int delayLength = 0;
+  Serial.println(distanceToGroundFromBottomOfDrone);
 
-  if (sensorValue > 1500){
-    return;
+  if (currentState == LANDED){
+    Serial.println("LANDED");
+  } else {
+    Serial.println("FLYING");
   }
 
-  if (sensorValue < 0) {
-    delayLength = 0;
-  }
-  else {
-    delayLength = (sensorValue / 3) + 100;
-  }
-
-  Serial.println(delayLength);
-
-  tone(7, 400);
-  delay(50);
-  noTone(7);
-  delay(delayLength);
+   droneStateMachine();
+  
+  delay(100);
 }
